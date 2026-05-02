@@ -1,0 +1,6 @@
+node_modules/
+midnight-level-db/
+logs/
+score-backup-*.json
+.env
+dist/

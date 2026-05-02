@@ -1,0 +1,93 @@
+pragma language_version >= 0.16 && <= 0.22;
+import CompactStandardLibrary;
+
+// -------------------------------------------------------
+// PUBLIC LEDGER STATE
+// One field: a hash committing to (secretKey, score).
+// Neither value is revealed on-chain.
+// -------------------------------------------------------
+
+export ledger scoreCommitment: Bytes<32>;
+
+// -------------------------------------------------------
+// WITNESS DECLARATIONS
+// No bodies here — implementations are in src/witnesses.ts.
+// localSecretKey returns Bytes<32> (maps from Uint8Array).
+// localScore returns Uint<64> (maps from bigint).
+// -------------------------------------------------------
+
+witness localSecretKey(): Bytes<32>;
+witness localScore(): Uint<64>;
+
+// -------------------------------------------------------
+// HELPER: derive commitment from (key, score)
+// -------------------------------------------------------
+
+circuit commitment(sk: Bytes<32>, score: Uint<64>): Bytes<32> {
+  // Uint<64> cannot be passed to pad() — cast through Field then to Bytes<32>
+  const scoreBytes = (score as Field) as Bytes<32>;
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "score-tracker:v1:"),
+    persistentHash<Vector<2, Bytes<32>>>([sk, scoreBytes])
+  ]);
+}
+
+// -------------------------------------------------------
+// CONSTRUCTOR
+// Runs once, atomically at deployment time.
+// Using constructor() instead of an exported initialize() circuit
+// prevents a race condition where another caller could invoke
+// initialize() before the deployer, claiming the contract with
+// their own key.
+// -------------------------------------------------------
+
+constructor() {
+  const sk = localSecretKey();
+  const score = localScore();
+  // Reveal only the commitment — key and score stay private
+  scoreCommitment = disclose(commitment(sk, score));
+}
+
+// -------------------------------------------------------
+// INCREMENT
+// Verifies current commitment, then commits to (key, score+1).
+// -------------------------------------------------------
+
+export circuit increment(): [] {
+  const sk = localSecretKey();
+  const score = localScore();
+
+  // Prove we own the current commitment before we can change it
+  assert(
+    scoreCommitment == commitment(sk, score),
+    "State mismatch: local score does not match on-chain commitment"
+  );
+
+  assert(
+    score < (18446744073709551615 as Uint<64>),
+    "Score has reached maximum value"
+  );
+
+  // Arithmetic result must be cast back to Uint<64> before passing to commitment()
+  scoreCommitment = disclose(commitment(sk, (score + (1 as Uint<64>)) as Uint<64>));
+}
+
+// -------------------------------------------------------
+// DECREMENT
+// Verifies current commitment, then commits to (key, score-1).
+// -------------------------------------------------------
+
+export circuit decrement(): [] {
+  const sk = localSecretKey();
+  const score = localScore();
+
+  assert(
+    scoreCommitment == commitment(sk, score),
+    "State mismatch: local score does not match on-chain commitment"
+  );
+
+  assert(score > (0 as Uint<64>), "Score cannot go below zero");
+
+  // Arithmetic result must be cast back to Uint<64> before passing to commitment()
+  scoreCommitment = disclose(commitment(sk, (score - (1 as Uint<64>)) as Uint<64>));
+}
