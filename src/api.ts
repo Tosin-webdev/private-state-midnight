@@ -205,7 +205,7 @@ export async function increment(
     ScorePrivateStateId
   );
   if (!stateBefore)
-    throw new Error("No private state found. Run deploy first.");
+    throw new Error("No private state found. Run deploy or join first.");
 
   // The circuit reads the current score through the localScore witness,
   // verifies it matches the on-chain commitment, then updates the commitment.
@@ -232,7 +232,7 @@ export async function decrement(
   const stateBefore = await providers.privateStateProvider.get(
     ScorePrivateStateId
   );
-  if (!stateBefore) throw new Error("No private state found.");
+  if (!stateBefore) throw new Error("No private state found. Run deploy or join first");
   if (stateBefore.score === 0n) throw new Error("Score is already zero.");
 
   await contract.callTx.decrement();
